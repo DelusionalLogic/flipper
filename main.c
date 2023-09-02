@@ -1,4 +1,5 @@
 #include "render.h"
+#include "font8x8_basic.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -123,6 +124,10 @@ static bool process(struct RenderContext *ctx) {
 	return true;
 }
 
+float lerpf(float a, float b, float t) {
+	return a * (1-t) + b * (t);
+}
+
 int main(int argc, char * argv[]) {
 	struct RenderContext ctx;
 
@@ -130,20 +135,50 @@ int main(int argc, char * argv[]) {
 
 	player.y = 100;
 
+	uint8_t fps;
 	struct timespec frame_start;
+	struct timespec prev_frame_start;
 	while(true) {
+		prev_frame_start = frame_start;
 		clock_gettime(CLOCK_MONOTONIC, &frame_start);
+		uint16_t frame_time = (frame_start.tv_sec - prev_frame_start.tv_sec) * 1000000000 + (frame_start.tv_nsec - prev_frame_start.tv_nsec) / 1000;
+		fps = lerpf(fps, 1000000.0 / frame_time, 0.8);
+
 		if(!process(&ctx)) {
 			break;
 		}
 
+		char str[255];
+		sprintf(str, "FPS %d", fps);
+		uint8_t *display = ctx.buffer;
+		for(char *c = str; *c != '\0'; c++) {
+			uint8_t *letter = (uint8_t *)font8x8_basic[(uint8_t)*c];
+			for(uint8_t row = 0; row < 8; row++) {
+				uint8_t mask = 0x01;
+				for(uint8_t col = 0; col < 8; col++) {
+					if((letter[row] & mask) != 0) {
+						display[0] = 255;
+						display[1] = 255;
+						display[2] = 255;
+						display[3] = 255;
+					}
+					display += 4;
+					mask = mask << 1;
+				}
+				display += WIDTH * 4 - 4*8;
+			}
+			display -= WIDTH * 4 * 8 - 8*4;
+		}
+
 		render(&ctx);
 
-		struct timespec frame_sleep;
-		clock_gettime(CLOCK_MONOTONIC, &frame_sleep);
-		uint32_t frame_time = (frame_sleep.tv_sec - frame_start.tv_sec) * 1000000000 + (frame_sleep.tv_nsec -frame_start.tv_nsec) / 1000;
-		if(frame_time < 16000) {
-			usleep(16600-frame_time);
+		{
+			struct timespec frame_sleep;
+			clock_gettime(CLOCK_MONOTONIC, &frame_sleep);
+			uint32_t frame_time = (frame_sleep.tv_sec - frame_start.tv_sec) * 1000000000 + (frame_sleep.tv_nsec -frame_start.tv_nsec) / 1000;
+			if(frame_time < 16000) {
+				usleep(16600-frame_time);
+			}
 		}
 	}
 

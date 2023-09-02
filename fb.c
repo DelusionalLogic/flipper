@@ -35,81 +35,76 @@ void init_render(struct RenderContext *ctx) {
 	sleep(1);
 
 	{
-		int ttyfd = open("/dev/tty2", O_RDWR);
-		if(ttyfd < 0) {
+		ctx->ttyfd = open("/dev/tty0", O_RDWR);
+		if(ctx->ttyfd < 0) {
 			fprintf(stderr, "Failed to open initial tty (%m)\n");
 			abort();
 		}
 
 		uint32_t nr;
-		if (ioctl(ttyfd, VT_OPENQRY, &nr) < 0) {
-			close(ttyfd);
+		if (ioctl(ctx->ttyfd, VT_OPENQRY, &nr) < 0) {
 			perror("ioctl VT_OPENQRY");
-			abort();
+			goto fail;
 		}
-		close(ttyfd);
+		close(ctx->ttyfd);
 
 		char vtname[128];
 		sprintf(vtname, "/dev/tty%d", nr);
 
-		ttyfd = open(vtname, O_RDWR | O_NDELAY);
-		if(ttyfd < 0) {
+		ctx->ttyfd = open(vtname, O_RDWR | O_NDELAY);
+		if(ctx->ttyfd < 0) {
 			fprintf(stderr, "Failed to open tty (%m)\n");
 			abort();
 		}
 
 		{
 			struct vt_stat stat;
-			if (ioctl(ttyfd, VT_GETSTATE, &stat) < 0) {
-				close(ttyfd);
+			if (ioctl(ctx->ttyfd, VT_GETSTATE, &stat) < 0) {
 				perror("VT_GETSTATE");
-				abort();
+				goto fail;
 			}
 			ctx->prev_tty = stat.v_active;
 		}
 
-		if (ioctl(ttyfd, VT_ACTIVATE, nr) < 0) {
+		if (ioctl(ctx->ttyfd, VT_ACTIVATE, nr) < 0) {
 			perror("VT_ACTIVATE");
-			close(ttyfd);
-			abort();
+			goto fail;
 		}
 
-		if (ioctl(ttyfd, VT_WAITACTIVE, nr) < 0) {
+		if (ioctl(ctx->ttyfd, VT_WAITACTIVE, nr) < 0) {
 			perror("VT_WAITACTIVE");
-			close(ttyfd);
-			abort();
+			goto fail;
 		}
 
-		if (ioctl(ttyfd, KDSETMODE, KD_GRAPHICS) < 0) {
+		if (ioctl(ctx->ttyfd, KDSETMODE, KD_GRAPHICS) < 0) {
 			perror("KDSETMODE");
-			close(ttyfd);
-			abort();
+			goto fail;
 		}
-		ctx->ttyfd = ttyfd;
 	}
 
 	int fbfd = open("/dev/fb0", O_RDWR);
 	if(fbfd < 0) {
 		fprintf(stderr, "Failed to init framebuffer (%m)\n");
-		abort();
+		goto fail;
 	}
 
+#ifndef NDEBUG
 	struct fb_var_screeninfo vinfo;
-
 	ioctl(fbfd, FBIOGET_VSCREENINFO, &vinfo);
-
-	printf("BPP %d\n", vinfo.bits_per_pixel);
-
-	sleep(2);
-
 	assert(vinfo.xres == WIDTH);
 	assert(vinfo.yres == HEIGHT);
 	assert(vinfo.bits_per_pixel == 32);
+#endif
 
 	ioctl(fbfd, KDSETMODE, KD_GRAPHICS);
 	ctx->buffer = mmap(0, WIDTH * HEIGHT * 4, PROT_READ | PROT_WRITE, MAP_SHARED, fbfd, (off_t)0);
 
 	memset(ctx->keys, 0, KC_LAST * sizeof(uint8_t));
+	return;
+
+fail:
+	if(ctx->ttyfd > 0) close(ctx->ttyfd);
+	abort();
 }
 
 bool pump(struct RenderContext *ctx) {
