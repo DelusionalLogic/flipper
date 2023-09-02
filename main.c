@@ -57,6 +57,10 @@ struct splash {
 	uint8_t scale;
 } splash;
 
+float clampf(float min, float max, float t) {
+	return fmaxf(fminf(t, max), min);
+}
+
 float lerpf(float a, float b, float t) {
 	return a * (1-t) + b * (t);
 }
@@ -99,7 +103,7 @@ static bool process(struct RenderContext *ctx) {
 
 	if(player.inWater ^ (player.y <= 0)) {
 		splash.x = player.x;
-		splash.alive = 60;
+		splash.alive = 40;
 		float dot = -dy * (player.velx) + dx * (player.vely);
 		splash.scale = fminf(fabsf(dot) * 64, 255.0);
 	}
@@ -141,14 +145,17 @@ static bool process(struct RenderContext *ctx) {
 		int y_base = 120 + player.y;
 		int x_base = splash.x - player.x + 200;
 
-		float t = 1.0 - splash.alive/60.0;
+		float prev_t = clampf(0, 1, 1.0 - (splash.alive+1.5)/40.0);
+		float t = 1.0 - splash.alive/40.0;
 
 		for(uint8_t i = 0; i < 32; i++) {
-			if(noise(0x40 | i) > t ) {
+			if(noise(0x40 | i) > t + .1) {
 				uint16_t x = x_base + t * (noise(i)-0.5) * 1 * splash.scale;
+				uint16_t prev_x = x_base + prev_t * (noise(i)-0.5) * 1 * splash.scale;
 				uint16_t y = y_base - sin(t * M_PI * lerpf(0.8, 1.0, noise(i | 0x80))) * noise(i | 0x80) * splash.scale/4;
+				uint16_t prev_y = y_base - sin(prev_t * M_PI * lerpf(0.8, 1.0, noise(i | 0x80))) * noise(i | 0x80) * splash.scale/4;
 				if(x >= 0 && x < 400 && y >= 0 && y < 240) {
-					plot(ctx, x, y, 255);
+					plotLine(ctx, x, y, prev_x, prev_y, 1);
 				}
 			}
 		}
