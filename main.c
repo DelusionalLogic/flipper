@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <stdint.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -105,8 +106,19 @@ static bool process(struct RenderContext *ctx) {
 	plotLine(ctx, 200 - dx*10 - player.velx  , 120 - -dy*10 + player.vely  , 200 + dx*10 - player.velx  , 120 + -dy*10 + player.vely  , 2);
 	plotLine(ctx, 200 - dx*10 - player.velx*3, 120 - -dy*10 + player.vely*3, 200 + dx*10 - player.velx*3, 120 + -dy*10 + player.vely*3, 3);
 
-	if(player.y > -120 && player.y < 120) {
-		plotLine(ctx, 0, 120 + player.y, 400, 120 + player.y, 1);
+	static float t = 0.0;
+	t += 0.01667;
+
+	int w_base = 120 + player.y;
+	int w_offset = player.x;
+	for(int x = 0; x < 400; x++) {
+		float wave = cosf((w_offset + x + t*13) * M_PI*2 / 400  * 4) * 2;
+		wave += cosf((w_offset + x + t*26) * M_PI*2 / 400 * 7.3) * 2.4;
+		wave += cosf((w_offset + x + -t*50) * M_PI*2 / 400 * 1.2) * 4;
+		float y = w_base + wave;
+		if(y > 0 && y < 240) {
+			plot(ctx, x, y, 255);
+		}
 	}
 
 	return true;
@@ -119,13 +131,19 @@ int main(int argc, char * argv[]) {
 
 	player.y = 100;
 
+	struct timespec frame_start;
 	while(true) {
+		clock_gettime(CLOCK_MONOTONIC, &frame_start);
 		if(!process(&ctx)) {
 			break;
 		}
 
 		render(&ctx);
-		usleep(10000);
+
+		struct timespec frame_sleep;
+		clock_gettime(CLOCK_MONOTONIC, &frame_sleep);
+		uint32_t frame_time = (frame_sleep.tv_sec - frame_start.tv_sec) * 1000000000 + (frame_sleep.tv_nsec -frame_start.tv_nsec) / 1000;
+		usleep(16600-frame_time);
 	}
 
 	printf("END\n");
