@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <time.h>
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -128,6 +129,27 @@ float lerpf(float a, float b, float t) {
 	return a * (1-t) + b * (t);
 }
 
+void text(char *str, uint8_t *pos) {
+	for(char *c = str; *c != '\0'; c++) {
+		uint8_t *letter = (uint8_t *)font8x8_basic[(uint8_t)*c];
+		for(uint8_t row = 0; row < 8; row++) {
+			uint8_t mask = 0x01;
+			for(uint8_t col = 0; col < 8; col++) {
+				if((letter[row] & mask) != 0) {
+					pos[0] = 255;
+					pos[1] = 255;
+					pos[2] = 255;
+					pos[3] = 255;
+				}
+				pos += 4;
+				mask = mask << 1;
+			}
+			pos += WIDTH * 4 - 4*8;
+		}
+		pos -= WIDTH * 4 * 8 - 8*4;
+	}
+}
+
 int main(int argc, char * argv[]) {
 	struct RenderContext ctx;
 
@@ -135,8 +157,8 @@ int main(int argc, char * argv[]) {
 
 	player.y = 100;
 
-	uint8_t fps;
-	struct timespec frame_start;
+	uint8_t fps = 0;
+	struct timespec frame_start = {0};
 	struct timespec prev_frame_start;
 	while(true) {
 		prev_frame_start = frame_start;
@@ -150,25 +172,7 @@ int main(int argc, char * argv[]) {
 
 		char str[255];
 		sprintf(str, "FPS %d", fps);
-		uint8_t *display = ctx.buffer;
-		for(char *c = str; *c != '\0'; c++) {
-			uint8_t *letter = (uint8_t *)font8x8_basic[(uint8_t)*c];
-			for(uint8_t row = 0; row < 8; row++) {
-				uint8_t mask = 0x01;
-				for(uint8_t col = 0; col < 8; col++) {
-					if((letter[row] & mask) != 0) {
-						display[0] = 255;
-						display[1] = 255;
-						display[2] = 255;
-						display[3] = 255;
-					}
-					display += 4;
-					mask = mask << 1;
-				}
-				display += WIDTH * 4 - 4*8;
-			}
-			display -= WIDTH * 4 * 8 - 8*4;
-		}
+		text(str, ctx.buffer);
 
 		render(&ctx);
 
