@@ -51,6 +51,32 @@ struct dolphin {
 	uint8_t inWater;
 } player;
 
+struct splash {
+	int32_t x;
+	uint8_t alive;
+	uint8_t scale;
+} splash;
+
+float lerpf(float a, float b, float t) {
+	return a * (1-t) + b * (t);
+}
+
+float hash(float p) {
+	float f;
+	p = modff(p * 0.011, &f);
+	p *= p + 7.5;
+	p *= p + p;
+	p = modff(p, &f);
+	return p;
+}
+
+float noise(float x) {
+    float i;
+    float f = modff(x, &i);
+    float u = f * f * (3.0 - 2.0 * f);
+    return lerpf(hash(i), hash(i + 1.0), u);
+}
+
 static bool process(struct RenderContext *ctx) {
 	if(!pump(ctx)) {
 		return false;
@@ -69,8 +95,15 @@ static bool process(struct RenderContext *ctx) {
 	if(player.angle < 0.0) player.angle += M_PI*2;
 	if(player.angle > 0.0) player.angle -= M_PI*2;
 
-	player.inWater = player.y <= 0;
 	float dx = cos(player.angle), dy = sin(player.angle);
+
+	if(player.inWater ^ (player.y <= 0)) {
+		splash.x = player.x;
+		splash.alive = 60;
+		float dot = -dy * (player.velx) + dx * (player.vely);
+		splash.scale = fminf(fabsf(dot) * 64, 255.0);
+	}
+	player.inWater = player.y <= 0;
 
 	// Apply gravity over water
 	if(!player.inWater) {
@@ -103,6 +136,26 @@ static bool process(struct RenderContext *ctx) {
 
 	memset(ctx->buffer, 0, WIDTH * HEIGHT * 4);
 
+
+	if(splash.alive > 0) {
+		int y_base = 120 + player.y;
+		int x_base = splash.x - player.x + 200;
+
+		float t = 1.0 - splash.alive/60.0;
+
+		for(uint8_t i = 0; i < 32; i++) {
+			if(noise(0x40 | i) > t ) {
+				uint16_t x = x_base + t * (noise(i)-0.5) * 1 * splash.scale;
+				uint16_t y = y_base - sin(t * M_PI * lerpf(0.8, 1.0, noise(i | 0x80))) * noise(i | 0x80) * splash.scale/4;
+				if(x >= 0 && x < 400 && y >= 0 && y < 240) {
+					plot(ctx, x, y, 255);
+				}
+			}
+		}
+
+		splash.alive--;
+	}
+
 	plotLine(ctx, 200 - dx*10                , 120 - -dy*10                , 200 + dx*10                , 120 + -dy*10                , 1);
 	plotLine(ctx, 200 - dx*10 - player.velx  , 120 - -dy*10 + player.vely  , 200 + dx*10 - player.velx  , 120 + -dy*10 + player.vely  , 2);
 	plotLine(ctx, 200 - dx*10 - player.velx*3, 120 - -dy*10 + player.vely*3, 200 + dx*10 - player.velx*3, 120 + -dy*10 + player.vely*3, 3);
@@ -123,10 +176,6 @@ static bool process(struct RenderContext *ctx) {
 	}
 
 	return true;
-}
-
-float lerpf(float a, float b, float t) {
-	return a * (1-t) + b * (t);
 }
 
 void text(char *str, uint8_t *pos) {
