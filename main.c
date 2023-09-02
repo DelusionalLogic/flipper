@@ -55,8 +55,7 @@ static bool process(struct RenderContext *ctx) {
 	}
 
 	if(ctx->keys[KC_ESC]) {
-		/* printf("EXIT\n"); */
-		/* return false; */
+		return false;
 	}
 
 	if(ctx->keys[KC_LEFT]) {
@@ -147,6 +146,8 @@ int main(int argc, char * argv[]) {
 			usleep(16600-frame_time);
 		}
 	}
+
+	stop(&ctx);
 
 	printf("END\n");
 	return 0;

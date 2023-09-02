@@ -15,6 +15,8 @@
 #include <linux/vt.h>
 
 void init_render(struct RenderContext *ctx) {
+	ctx->prev_tty = 0;
+
 	int fd = open("/dev/input/event1", O_RDONLY|O_NONBLOCK);
 	int rc = libevdev_new_from_fd(fd, &ctx->dev);
 	if (rc < 0) {
@@ -33,9 +35,9 @@ void init_render(struct RenderContext *ctx) {
 	sleep(1);
 
 	{
-		int ttyfd = open("/dev/tty0", O_RDWR);
+		int ttyfd = open("/dev/tty2", O_RDWR);
 		if(ttyfd < 0) {
-			fprintf(stderr, "Failed to open tty (%m)\n");
+			fprintf(stderr, "Failed to open initial tty (%m)\n");
 			abort();
 		}
 
@@ -50,10 +52,20 @@ void init_render(struct RenderContext *ctx) {
 		char vtname[128];
 		sprintf(vtname, "/dev/tty%d", nr);
 
-		ttyfd = open(vtname, O_RDWR);
+		ttyfd = open(vtname, O_RDWR | O_NDELAY);
 		if(ttyfd < 0) {
 			fprintf(stderr, "Failed to open tty (%m)\n");
 			abort();
+		}
+
+		{
+			struct vt_stat stat;
+			if (ioctl(ttyfd, VT_GETSTATE, &stat) < 0) {
+				close(ttyfd);
+				perror("VT_GETSTATE");
+				abort();
+			}
+			ctx->prev_tty = stat.v_active;
 		}
 
 		if (ioctl(ttyfd, VT_ACTIVATE, nr) < 0) {
@@ -73,6 +85,7 @@ void init_render(struct RenderContext *ctx) {
 			close(ttyfd);
 			abort();
 		}
+		ctx->ttyfd = ttyfd;
 	}
 
 	int fbfd = open("/dev/fb0", O_RDWR);
@@ -95,6 +108,8 @@ void init_render(struct RenderContext *ctx) {
 
 	ioctl(fbfd, KDSETMODE, KD_GRAPHICS);
 	ctx->buffer = mmap(0, WIDTH * HEIGHT * 4, PROT_READ | PROT_WRITE, MAP_SHARED, fbfd, (off_t)0);
+
+	memset(ctx->keys, 0, KC_LAST * sizeof(uint8_t));
 }
 
 bool pump(struct RenderContext *ctx) {
@@ -133,4 +148,28 @@ bool pump(struct RenderContext *ctx) {
 }
 
 void render(struct RenderContext *ctx) {
+}
+
+void stop(struct RenderContext *ctx) {
+	memset(ctx->buffer, 0, WIDTH*HEIGHT*4);
+	munmap(ctx->buffer, WIDTH*HEIGHT*4);
+	close(ctx->fbfd);
+
+	// Shouldn't this be saved when opened too?
+	if (ioctl(ctx->ttyfd, KDSETMODE, KD_TEXT) < 0) {
+		perror("KDSETMODE");
+		goto err;
+	}
+
+	if (ioctl(ctx->ttyfd, VT_ACTIVATE, ctx->prev_tty) < 0) {
+		perror("VT_ACTIVATE");
+		goto err;
+	}
+
+	close(ctx->ttyfd);
+	return;
+
+err:
+	close(ctx->ttyfd);
+	abort();
 }

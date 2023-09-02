@@ -43,7 +43,7 @@ bool pump(struct RenderContext *ctx) {
 	ctx->keys[KC_UP] = keystate[SDLK_UP];
 	ctx->keys[KC_LEFT] = keystate[SDLK_LEFT];
 	ctx->keys[KC_RIGHT] = keystate[SDLK_RIGHT];
-	ctx->keys[KC_ESC] = keystate[KC_ESC];
+	ctx->keys[KC_ESC] = keystate[SDLK_ESCAPE];
 
 	return true;
 }
@@ -53,4 +53,7 @@ void render(struct RenderContext *ctx) {
     if(SDL_BlitSurface(ctx->surface, NULL, screen, NULL) == 0) {
         SDL_UpdateRect(screen, 0, 0, 0, 0);
 	}
+}
+
+void stop(struct RenderContext *ctx) {
 }

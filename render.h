@@ -25,13 +25,14 @@ enum KeyCode {
 };
 
 struct RenderContext {
-	union {
 #if RENDER == SDL
-		SDL_Surface *surface;
+	SDL_Surface *surface;
 #elif RENDER == FB
-		struct libevdev *dev;
+	struct libevdev *dev;
+	unsigned short prev_tty;
+	int ttyfd;
+	int fbfd;
 #endif
-	};
 	uint8_t keys[KC_LAST];
 	uint8_t *buffer;
 };
@@ -39,3 +40,4 @@ struct RenderContext {
 void init_render(struct RenderContext *ctx);
 bool pump(struct RenderContext *ctx);
 void render(struct RenderContext *ctx);
+void stop(struct RenderContext *ctx);
