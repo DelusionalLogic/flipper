@@ -143,7 +143,9 @@ int main(int argc, char * argv[]) {
 		struct timespec frame_sleep;
 		clock_gettime(CLOCK_MONOTONIC, &frame_sleep);
 		uint32_t frame_time = (frame_sleep.tv_sec - frame_start.tv_sec) * 1000000000 + (frame_sleep.tv_nsec -frame_start.tv_nsec) / 1000;
-		usleep(16600-frame_time);
+		if(frame_time < 16000) {
+			usleep(16600-frame_time);
+		}
 	}
 
 	printf("END\n");
