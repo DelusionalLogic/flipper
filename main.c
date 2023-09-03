@@ -12,6 +12,8 @@
 #include <math.h>
 
 static void plot(struct RenderContext *ctx, uint16_t x, uint16_t y, uint8_t v) {
+	if(x < 0 || x >= WIDTH) return;
+	if(y < 0 || y >= HEIGHT) return;
 	uint32_t base = (x + (y * WIDTH)) * 4;
 	ctx->buffer[base + 0] = v;
 	ctx->buffer[base + 1] = v;
@@ -58,6 +60,7 @@ struct splash {
 	uint8_t life;
 	uint8_t alive;
 	uint8_t scale;
+	uint8_t escale;
 } splash;
 
 float clampf(float min, float max, float t) {
@@ -110,6 +113,8 @@ static bool process(struct RenderContext *ctx) {
 		splash.scale = fminf(fabsf(dot) * 64, 255.0);
 		splash.life = lerpf(30, 60, splash.scale/255.0);
 		splash.alive = splash.life;
+		float pdot = dx * (player.velx) + dy * (player.vely);
+		splash.escale = player.inWater ? 0 : fmin(fabsf(pdot) * 64, 255.0);
 	}
 	player.inWater = player.y <= 0;
 
@@ -123,12 +128,12 @@ static bool process(struct RenderContext *ctx) {
 		player.velx *= .99999f;
 		player.vely *= .99999f;
 
-		// Dot product of the velocity and player direction
-		/* float vel_mag = sqrtf(powf(player.velx, 2) + powf(player.vely, 2)); */
 		if(fabs(player.velx) > 0.00001 || fabs(player.vely) > 0.00001) {
 			float dot = -dy * (player.velx) + dx * (player.vely);
-			player.velx += -dy * -dot * .3;
-			player.vely += dx * -dot * .3;
+			// There's some layer of less heavy water near the surface
+			float depth_factor = powf(clampf(0.0, 1.0, -player.y / 50.0), 2);
+			player.velx += -dy * -dot * .3 * depth_factor;
+			player.vely +=  dx * -dot * .3 * depth_factor;
 		}
 	}
 
@@ -144,7 +149,6 @@ static bool process(struct RenderContext *ctx) {
 
 	memset(ctx->buffer, 0, WIDTH * HEIGHT * 4);
 
-
 	if(splash.alive > 0) {
 		int y_base = 120 + player.y;
 		int x_base = splash.x - player.x + 200;
@@ -156,15 +160,30 @@ static bool process(struct RenderContext *ctx) {
 			if(noise(0x40 | i) <= t) {
 				continue;
 			}
-			uint16_t x = x_base + t * (noise(i)-0.5) * 1 * splash.scale;
-			uint16_t y = y_base - sin(t * M_PI * lerpf(0.8, 1.0, noise(i | 0x80))) * noise(i | 0x80) * splash.scale/4;
+			uint16_t x      = x_base +      t * (noise(i)-0.5) * splash.scale * 1;
+			uint16_t prev_x = x_base + prev_t * (noise(i)-0.5) * splash.scale * 1;
 
-			uint16_t prev_x = x_base + prev_t * (noise(i)-0.5) * 1 * splash.scale;
-			uint16_t prev_y = y_base - sin(prev_t * M_PI * lerpf(0.8, 1.0, noise(i | 0x80))) * noise(i | 0x80) * splash.scale/4;
+			uint16_t y      = y_base - sin(     t * M_PI * lerpf(0.8, 1.0, noise(i | 0x80))) * noise(i | 0x80) * splash.scale * 0.25;
+			uint16_t prev_y = y_base - sin(prev_t * M_PI * lerpf(0.8, 1.0, noise(i | 0x80))) * noise(i | 0x80) * splash.scale * 0.25;
 			if(x >= 0 && x < 400 && y >= 0 && y < 240) {
 				plotLine(ctx, x, y, prev_x, prev_y, 1);
 			}
 		}
+
+		// This kinda looks bad
+		/* for(uint8_t i = 0; i < splash.escale/4; i++) { */
+		/* 	if(noise(0x40 | i) <= t) { */
+		/* 		continue; */
+		/* 	} */
+		/* 	uint16_t x      = x_base +      t * (noise(i)-0.5) * splash.escale * 0.25; */
+		/* 	uint16_t prev_x = x_base + prev_t * (noise(i)-0.5) * splash.escale * 0.25; */
+
+		/* 	uint16_t y      = y_base + sin(     t * M_PI * lerpf(0.8, 1.0, noise(i | 0x80))) * noise(i | 0x80) * splash.escale * 0.2625; */
+		/* 	uint16_t prev_y = y_base + sin(prev_t * M_PI * lerpf(0.8, 1.0, noise(i | 0x80))) * noise(i | 0x80) * splash.escale * 0.2625; */
+		/* 	if(x >= 0 && x < 400 && y >= 0 && y < 240) { */
+		/* 		plotLine(ctx, x, y, prev_x, prev_y, 1); */
+		/* 	} */
+		/* } */
 
 		splash.alive--;
 	}
@@ -179,9 +198,10 @@ static bool process(struct RenderContext *ctx) {
 	int w_base = 120 + player.y;
 	int w_offset = player.x;
 	for(int x = 0; x < 400; x++) {
-		float wave = cosf((w_offset + x + t*13) * M_PI*2 / 400  * 4) * 2;
-		wave += cosf((w_offset + x + t*26) * M_PI*2 / 400 * 7.3) * 2.4;
-		wave += cosf((w_offset + x + -t*50) * M_PI*2 / 400 * 1.2) * 4;
+		float wave = sinf((w_offset + x + t*26) * M_PI*2 / 400  * 5.5) * 2;
+		wave += sinf((w_offset + x - t*4) * M_PI*2 / 400  * 4) * 2;
+		wave += sinf((w_offset + x + t*33) * M_PI*2 / 400 * 7.3) * 1.2;
+		wave += sinf((w_offset + x + -t*50) * M_PI*2 / 400 * 1.2) * 4;
 		float y = w_base + wave;
 		if(y > 0 && y < 240) {
 			plot(ctx, x, y, 255);
