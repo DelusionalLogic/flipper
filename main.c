@@ -81,10 +81,10 @@ float hash(float p) {
 }
 
 float noise(float x) {
-    float i;
-    float f = modff(x, &i);
-    float u = f * f * (3.0 - 2.0 * f);
-    return lerpf(hash(i), hash(i + 1.0), u);
+	float i;
+	float f = modff(x, &i);
+	float u = f * f * (3.0 - 2.0 * f);
+	return lerpf(hash(i), hash(i + 1.0), u);
 }
 
 static bool process(struct RenderContext *ctx) {
