@@ -12,8 +12,8 @@
 #include <math.h>
 
 static void plot(struct RenderContext *ctx, uint16_t x, uint16_t y, uint8_t v) {
-	if(x < 0 || x >= WIDTH) return;
-	if(y < 0 || y >= HEIGHT) return;
+	assert(x >= 0 && x < WIDTH);
+	assert(y >= 0 && y < HEIGHT);
 	uint32_t base = (x + (y * WIDTH)) * 4;
 	ctx->buffer[base + 0] = v;
 	ctx->buffer[base + 1] = v;
@@ -22,6 +22,10 @@ static void plot(struct RenderContext *ctx, uint16_t x, uint16_t y, uint8_t v) {
 }
 
 static void plotLine(struct RenderContext *ctx, uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint8_t fill) {
+	assert(x0 < 0xFFFF);
+	assert(x1 < 0xFFFF);
+	assert(y0 < 0xFFFF);
+	assert(y1 < 0xFFFF);
 	uint16_t dx = abs(x1-x0);
 	int8_t sx = x0<x1 ? 1 : -1;
 	int16_t dy = -abs(y1-y0);
@@ -43,6 +47,7 @@ static void plotLine(struct RenderContext *ctx, uint16_t x0, uint16_t y0, uint16
 
 struct dolphin {
 	float angle;
+	float bend;
 
 	int32_t x;
 	int32_t y;
@@ -56,9 +61,13 @@ struct dolphin {
 // @COMPLETE: It's possible for the player to splash multiple times, maybe we
 // should have multiple of these things
 struct splash {
+	// A random number to make the particles unique
+	uint8_t seed;
+
 	int32_t x;
 	uint8_t life;
 	uint8_t alive;
+
 	uint8_t scale;
 	uint8_t escale;
 } splash;
@@ -96,18 +105,32 @@ static bool process(struct RenderContext *ctx) {
 		return false;
 	}
 
-	if(ctx->keys[KC_LEFT]) {
-		player.angle += .04;
+	{
+		float dir;
+		{
+			float dx = cos(player.angle), dy = sin(player.angle);
+			float dot = dx * (player.velx) + dy * (player.vely);
+			dir = dot > 0.0 ? 1 : -1;
+		}
+
+		if(ctx->keys[KC_LEFT]) {
+			player.angle += .04;
+			player.bend += dir * 0.15;
+		} else if(ctx->keys[KC_RIGHT]) {
+			player.angle -= .04;
+			player.bend -= dir * 0.15;
+		} else {
+			player.bend -= (player.bend > 0.0 ? 1 : -1) * 0.1;
+		}
+		if(player.angle < 0.0) player.angle += M_PI*2;
+		if(player.angle > 0.0) player.angle -= M_PI*2;
+		player.bend = clampf(-1.0, 1.0, player.bend);
 	}
-	if(ctx->keys[KC_RIGHT]) {
-		player.angle -= .04;
-	}
-	if(player.angle < 0.0) player.angle += M_PI*2;
-	if(player.angle > 0.0) player.angle -= M_PI*2;
 
 	float dx = cos(player.angle), dy = sin(player.angle);
 
 	if(player.inWater ^ (player.y <= 0)) {
+		splash.seed = rand();
 		splash.x = player.x;
 		float dot = -dy * (player.velx) + dx * (player.vely);
 		splash.scale = fminf(fabsf(dot) * 64, 255.0);
@@ -157,16 +180,20 @@ static bool process(struct RenderContext *ctx) {
 		float t = 1.0 - splash.alive/(float)splash.life;
 
 		for(uint8_t i = 0; i < splash.scale/4; i++) {
-			if(noise(0x40 | i) <= t) {
+			if(noise(0x40 ^ i ^ splash.seed) <= t) {
 				continue;
 			}
-			uint16_t x      = x_base +      t * (noise(i)-0.5) * splash.scale * 1;
-			uint16_t prev_x = x_base + prev_t * (noise(i)-0.5) * splash.scale * 1;
+			uint16_t x      = x_base +      t * (noise(i ^ splash.seed)-0.5) * splash.scale * 1;
+			uint16_t prev_x = x_base + prev_t * (noise(i ^ splash.seed)-0.5) * splash.scale * 1;
 
-			uint16_t y      = y_base - sin(     t * M_PI * lerpf(0.8, 1.0, noise(i | 0x80))) * noise(i | 0x80) * splash.scale * 0.25;
-			uint16_t prev_y = y_base - sin(prev_t * M_PI * lerpf(0.8, 1.0, noise(i | 0x80))) * noise(i | 0x80) * splash.scale * 0.25;
+			uint16_t y      = y_base - sin(     t * M_PI * lerpf(0.8, 1.0, noise(i ^ 0x80 ^ splash.seed))) * noise(i ^ 0x80 ^ splash.seed) * splash.scale * 0.25;
+			uint16_t prev_y = y_base - sin(prev_t * M_PI * lerpf(0.8, 1.0, noise(i ^ 0x80 ^ splash.seed))) * noise(i ^ 0x80 ^ splash.seed) * splash.scale * 0.25;
+			// We don't do clipping. Just discard any particle partly outside
+			// the viewport
 			if(x >= 0 && x < 400 && y >= 0 && y < 240) {
-				plotLine(ctx, x, y, prev_x, prev_y, 1);
+				if(prev_x >= 0 && prev_x < 400 && prev_y >= 0 && prev_y < 240) {
+					plotLine(ctx, x, y, prev_x, prev_y, 1);
+				}
 			}
 		}
 
@@ -188,7 +215,12 @@ static bool process(struct RenderContext *ctx) {
 		splash.alive--;
 	}
 
-	plotLine(ctx, 200 - dx*10                , 120 - -dy*10                , 200 + dx*10                , 120 + -dy*10                , 1);
+	float tx = cos(player.angle - player.bend * 0.2), ty = sin(player.angle - player.bend * 0.2);
+	float hx = cos(player.angle + player.bend * 0.2), hy = sin(player.angle + player.bend * 0.2);
+	// Tail
+	plotLine(ctx, 200 - tx*10                , 120 - -ty*10                , 200                        , 120                         , 1);
+	// Head
+	plotLine(ctx, 200                        , 120                         , 200 + hx*10                , 120 + -hy*10                , 1);
 	plotLine(ctx, 200 - dx*10 - player.velx  , 120 - -dy*10 + player.vely  , 200 + dx*10 - player.velx  , 120 + -dy*10 + player.vely  , 2);
 	plotLine(ctx, 200 - dx*10 - player.velx*3, 120 - -dy*10 + player.vely*3, 200 + dx*10 - player.velx*3, 120 + -dy*10 + player.vely*3, 3);
 
