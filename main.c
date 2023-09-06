@@ -270,12 +270,20 @@ static bool process(struct RenderContext *ctx) {
 			}
 
 			float h = wave[x] - ly;
-			uint8_t color;
+			uint8_t color = 0.0;
 			if(h < 0.0) {
 				// Underwater
-				color = lerpf(0, 120, clampf(0.0, 1.0, -h/1000));
+				if(ly < 50.0) {
+					color = lerpf(40, 0, clampf(0.0, 1.0, -h/20.0));
+				} else if(ly > 500) {
+					color = lerpf(0, 255.5, clampf(0.0, 1.0, (ly-500)/100));
+					/* color = 0.0; */
+				}
 			} else {
-				color = lerpf(255.5, 0, clampf(0.0, 1.0, h/1000));
+				if(h < 5.0) {
+				} else {
+					color = lerpf(55, 0, clampf(0.0, 1.0, -ly/1000));
+				}
 			}
 
 			if(dither[x % 8 + (y % 8) * 8] <= color) {
