@@ -11,6 +11,17 @@
 #include <unistd.h>
 #include <math.h>
 
+static const uint8_t dither[]  = {
+  0x03, 0x83, 0x23, 0xa3, 0x0b, 0x8b, 0x2b, 0xab, 
+  0xc3, 0x43, 0xe3, 0x63, 0xcb, 0x4b, 0xeb, 0x6b, 
+  0x33, 0xb3, 0x13, 0x93, 0x3b, 0xbb, 0x1b, 0x9b, 
+  0xf3, 0x73, 0xd3, 0x53, 0xfb, 0x7b, 0xdb, 0x5b, 
+  0x0f, 0x8f, 0x2f, 0xaf, 0x07, 0x87, 0x27, 0xa7, 
+  0xcf, 0x4f, 0xef, 0x6f, 0xc7, 0x47, 0xe7, 0x67, 
+  0x3f, 0xbf, 0x1f, 0x9f, 0x37, 0xb7, 0x17, 0x97, 
+  0xff, 0x7f, 0xdf, 0x5f, 0xf7, 0x77, 0xd7, 0x57
+};
+
 static void plot(struct RenderContext *ctx, uint16_t x, uint16_t y, uint8_t v) {
 	assert(x >= 0 && x < WIDTH);
 	assert(y >= 0 && y < HEIGHT);
@@ -240,16 +251,36 @@ static bool process(struct RenderContext *ctx) {
 	static float t = 0.0;
 	t += 0.01667;
 
-	int w_base = 120 + player.y;
 	int w_offset = player.x;
-	for(int x = 0; x < 400; x++) {
-		float wave = sinf((w_offset + x + t*26) * M_PI*2 / 400  * 5.5) * 2;
-		wave += sinf((w_offset + x - t*4) * M_PI*2 / 400  * 4) * 2;
-		wave += sinf((w_offset + x + t*33) * M_PI*2 / 400 * 7.3) * 1.2;
-		wave += sinf((w_offset + x + -t*50) * M_PI*2 / 400 * 1.2) * 4;
-		float y = w_base + wave;
-		if(y > 0 && y < 240) {
-			plot(ctx, x, y, 255);
+	float wave[WIDTH];
+	for(int x = 0; x < WIDTH; x++) {
+		wave[x] = sinf((w_offset + x + t*26) * M_PI*2 / 400  * 5.5) * 2;
+		wave[x] += sinf((w_offset + x - t*4) * M_PI*2 / 400  * 4) * 2;
+		wave[x] += sinf((w_offset + x + t*33) * M_PI*2 / 400 * 7.3) * 1.2;
+		wave[x] += sinf((w_offset + x + -t*50) * M_PI*2 / 400 * 1.2) * 4;
+	}
+
+	for(uint16_t y = 0; y < HEIGHT; y++) {
+		float ly = (-player.y - HEIGHT/2.0) + y;
+		for(uint16_t x = 0; x < WIDTH; x++) {
+			float lx = (player.x - WIDTH/2.0) + x;
+			if(fabs(wave[x] - ly) < .5) {
+				plot(ctx, x, y, 255);
+				continue;
+			}
+
+			float h = wave[x] - ly;
+			uint8_t color;
+			if(h < 0.0) {
+				// Underwater
+				color = lerpf(0, 120, clampf(0.0, 1.0, -h/1000));
+			} else {
+				color = lerpf(255.5, 0, clampf(0.0, 1.0, h/1000));
+			}
+
+			if(dither[x % 8 + (y % 8) * 8] <= color) {
+				plot(ctx, x, y, 255);
+			}
 		}
 	}
 
