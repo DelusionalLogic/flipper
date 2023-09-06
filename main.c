@@ -47,7 +47,6 @@ static void plotLine(struct RenderContext *ctx, uint16_t x0, uint16_t y0, uint16
 
 struct dolphin {
 	float angle;
-	float bend;
 
 	int32_t x;
 	int32_t y;
@@ -56,6 +55,11 @@ struct dolphin {
 	float vely;
 
 	uint8_t inWater;
+	float wiggleT;
+
+	float bend;
+	float wiggle;
+
 } player;
 
 // @COMPLETE: It's possible for the player to splash multiple times, maybe we
@@ -164,6 +168,7 @@ static bool process(struct RenderContext *ctx) {
 	if(ctx->keys[KC_UP] && !last_up && player.inWater) {
 		player.velx += dx * 1;
 		player.vely += dy * 1;
+		player.wiggleT = 60;
 	}
 	last_up = ctx->keys[KC_UP];
 
@@ -215,7 +220,15 @@ static bool process(struct RenderContext *ctx) {
 		splash.alive--;
 	}
 
-	float tx = cos(player.angle - player.bend * 0.2), ty = sin(player.angle - player.bend * 0.2);
+	if(player.wiggleT > 0.0) {
+		player.wiggleT -= 1.0;
+		player.wiggle += M_PI/15.0;
+	} else {
+		player.wiggle = 0.0;
+	}
+
+	float wiggle = lerpf(0.0, -sin(player.wiggle) * 0.8, player.wiggleT/60.0);
+	float tx = cos(player.angle - player.bend * 0.2 - wiggle), ty = sin(player.angle - player.bend * 0.2 - wiggle);
 	float hx = cos(player.angle + player.bend * 0.2), hy = sin(player.angle + player.bend * 0.2);
 	// Tail
 	plotLine(ctx, 200 - tx*10                , 120 - -ty*10                , 200                        , 120                         , 1);
