@@ -26,13 +26,13 @@ static void plot(struct RenderContext *ctx, uint16_t x, uint16_t y, uint8_t v) {
 	assert(x >= 0 && x < WIDTH);
 	assert(y >= 0 && y < HEIGHT);
 	uint32_t base = (x + (y * WIDTH)) * 4;
-	ctx->buffer[base + 0] = v;
-	ctx->buffer[base + 1] = v;
-	ctx->buffer[base + 2] = v;
+	ctx->buffer[base + 0] = v ? 255 : 0;
+	ctx->buffer[base + 1] = v ? 255 : 0;
+	ctx->buffer[base + 2] = v ? 255 : 0;
 	ctx->buffer[base + 3] = 255;
 }
 
-static void plotLine(struct RenderContext *ctx, uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint8_t fill) {
+static void plotLine(struct RenderContext *ctx, uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint8_t fill, uint8_t v) {
 	assert(x0 < 0xFFFF);
 	assert(x1 < 0xFFFF);
 	assert(y0 < 0xFFFF);
@@ -46,7 +46,7 @@ static void plotLine(struct RenderContext *ctx, uint16_t x0, uint16_t y0, uint16
 
 	for(;;) {
 		if(cnt == 0) {
-			plot(ctx, x0, y0, 255);
+			plot(ctx, x0, y0, v);
 		}
 		cnt = (cnt+1) % fill;
 		if(x0==x1 && y0==y1) break;
@@ -95,6 +95,33 @@ float lerpf(float a, float b, float t) {
 	return a * (1-t) + b * (t);
 }
 
+static int SEED = 0;
+static int hasht[] = {
+    208, 34,  231, 213, 32,  248, 233, 56,  161, 78,  24,  140, 71,  48,  140,
+    254, 245, 255, 247, 247, 40,  185, 248, 251, 245, 28,  124, 204, 204, 76,
+    36,  1,   107, 28,  234, 163, 202, 224, 245, 128, 167, 204, 9,   92,  217,
+    54,  239, 174, 173, 102, 193, 189, 190, 121, 100, 108, 167, 44,  43,  77,
+    180, 204, 8,   81,  70,  223, 11,  38,  24,  254, 210, 210, 177, 32,  81,
+    195, 243, 125, 8,   169, 112, 32,  97,  53,  195, 13,  203, 9,   47,  104,
+    125, 117, 114, 124, 165, 203, 181, 235, 193, 206, 70,  180, 174, 0,   167,
+    181, 41,  164, 30,  116, 127, 198, 245, 146, 87,  224, 149, 206, 57,  4,
+    192, 210, 65,  210, 129, 240, 178, 105, 228, 108, 245, 148, 140, 40,  35,
+    195, 38,  58,  65,  207, 215, 253, 65,  85,  208, 76,  62,  3,   237, 55,
+    89,  232, 50,  217, 64,  244, 157, 199, 121, 252, 90,  17,  212, 203, 149,
+    152, 140, 187, 234, 177, 73,  174, 193, 100, 192, 143, 97,  53,  145, 135,
+    19,  103, 13,  90,  135, 151, 199, 91,  239, 247, 33,  39,  145, 101, 120,
+    99,  3,   186, 86,  99,  41,  237, 203, 111, 79,  220, 135, 158, 42,  30,
+    154, 120, 67,  87,  167, 135, 176, 183, 191, 253, 115, 184, 21,  233, 58,
+    129, 233, 142, 39,  128, 211, 118, 137, 139, 255, 114, 20,  218, 113, 154,
+    27,  127, 246, 250, 1,   8,   198, 250, 209, 92,  222, 173, 21,  88,  102,
+    219
+};
+
+int noise2(int x, int y) {
+    int tmp = hasht[(y + SEED) % 256];
+    return hasht[(tmp + x) % 256];
+}
+
 float hash(float p) {
 	float f;
 	p = modff(p * 0.011, &f);
@@ -109,6 +136,52 @@ float noise(float x) {
 	float f = modff(x, &i);
 	float u = f * f * (3.0 - 2.0 * f);
 	return lerpf(hash(i), hash(i + 1.0), u);
+}
+
+// 2D Random
+float random2d(float x, float y) {
+	float dot = 12.9898 * x + 78.233 * y;
+	float unused;
+	return modff(dot, &unused) * 43758.5453123;
+}
+
+float smoothstep(float min, float max, float v) {
+    return lerpf(min, max, v * v * (3-2*v));
+}
+
+float noise2d(float x, float y) {
+    int x_int = x;
+    int y_int = y;
+    float x_frac = x - x_int;
+    float y_frac = y - y_int;
+
+    int s = noise2(x_int, y_int);
+    int t = noise2(x_int+1, y_int);
+    int u = noise2(x_int, y_int+1);
+    int v = noise2(x_int+1, y_int+1);
+
+    float low = smoothstep(s, t, x_frac);
+    float high = smoothstep(u, v, x_frac);
+    return smoothstep(low, high, y_frac);
+}
+
+float perlin2d(float x, float y, float freq, int depth) {
+    float xa = x*freq;
+    float ya = y*freq;
+    float amp = 1.0;
+    float fin = 0;
+    float div = 0.0;
+
+    int i;
+    for(i=0; i<depth; i++) {
+        div += 256 * amp;
+        fin += noise2d(xa, ya) * amp;
+        amp /= 2;
+        xa *= 2;
+        ya *= 2;
+    }
+
+    return fin/div;
 }
 
 static bool process(struct RenderContext *ctx) {
@@ -205,30 +278,30 @@ static bool process(struct RenderContext *ctx) {
 				int16_t lx = (player.x - WIDTH/2.0) + x;
 				uint8_t color = 0.0;
 				float h = wave[x] - ly;
-				if(fabs(h) < 2.0) {
-					/* plot(ctx, x, y, 255); */
-					color = 120;
-					color = lerpf(255, 0, clampf(0.0, 1.0, fabs(h)/2));
+				if(h < 0.0) {
+					// Underwater
+					float foamNoise = perlin2d(abs(lx), abs(ly), 0.01, 4) * 255;
+					/* color += foamNoise; */
+					color += lerpf(foamNoise*0.7, 0, clampf(0.0, 1.0, -h/20.0));
+					color += lerpf(0, 255.5, clampf(0.0, 1.0, (ly-500)/100.0));
+						/* color = 0.0; */
 				} else {
-
-					if(h < 0.0) {
-						// Underwater
-						if(ly < 50.0) {
-							color = lerpf(40, 0, clampf(0.0, 1.0, -h/20.0));
-						} else if(ly > 500) {
-							color = lerpf(0, 255.5, clampf(0.0, 1.0, (ly-500)/100.0));
-							/* color = 0.0; */
-						}
-					} else {
-						if(h < 10.0) {
-							/* color = lerpf(0, 255, clampf(0.0, 1.0, h/10.0)); */
-						} else {
-							color = lerpf(55, 0, clampf(0.0, 1.0, -ly/1000.0));
+					// In Air
+					/* color = lerpf(55, 0, clampf(0.0, 1.0, -ly/1000.0)); */
+					if(powf(perlin2d(abs(lx), 1, 0.005, 4), 2) * 200 -100 > -ly)  {
+						color = 0;
+					} else{
+						color = 255;
+						if(ly < -400) {
+							float cloud = perlin2d(fabsf(lx-t*4), abs(ly), 0.01, 4);
+							float cutoff = lerpf(1.0, 0.7, clampf(0, 1, (-ly-400)/100.0));
+							cloud = clampf(0, 1, (cloud-cutoff)/(1.0-cutoff)) * 255;
+							color -= cloud;
 						}
 					}
 				}
 
-				uint8_t qcolor  = dither[abs(lx) % 8 + (abs(ly) % 8) * 8] <= color ? 255 : 0;
+				uint8_t qcolor = dither[abs(lx) % 8 + (abs(ly) % 8) * 8] <= color;
 				plot(ctx, x, y, qcolor);
 			}
 		}
@@ -254,7 +327,7 @@ static bool process(struct RenderContext *ctx) {
 			// the viewport
 			if(x >= 0 && x < 400 && y >= 0 && y < 240) {
 				if(prev_x >= 0 && prev_x < 400 && prev_y >= 0 && prev_y < 240) {
-					plotLine(ctx, x, y, prev_x, prev_y, 1);
+					plotLine(ctx, x, y, prev_x, prev_y, 1, 0);
 				}
 			}
 		}
@@ -284,15 +357,18 @@ static bool process(struct RenderContext *ctx) {
 		player.wiggle = 0.0;
 	}
 
-	float wiggle = lerpf(0.0, -sin(player.wiggle) * 0.8, player.wiggleT/60.0);
+	float wiggle = lerpf(0.0, -sin(player.wiggle) * 0.4, player.wiggleT/60.0);
 	float tx = cos(player.angle - player.bend * 0.2 - wiggle), ty = sin(player.angle - player.bend * 0.2 - wiggle);
 	float hx = cos(player.angle + player.bend * 0.2), hy = sin(player.angle + player.bend * 0.2);
 	// Tail
-	plotLine(ctx, 200 - tx*10                , 120 - -ty*10                , 200                        , 120                         , 1);
+	plotLine(ctx, 200 - tx*25                , 120 - -ty*25                , 200 + ty* 5                , 120 +  tx* 5                , 1, player.inWater);
+	plotLine(ctx, 200 - tx*25                , 120 - -ty*25                , 200 - ty* 5                , 120 -  tx* 5                , 1, player.inWater);
 	// Head
-	plotLine(ctx, 200                        , 120                         , 200 + hx*10                , 120 + -hy*10                , 1);
-	plotLine(ctx, 200 - dx*10 - player.velx  , 120 - -dy*10 + player.vely  , 200 + dx*10 - player.velx  , 120 + -dy*10 + player.vely  , 2);
-	plotLine(ctx, 200 - dx*10 - player.velx*3, 120 - -dy*10 + player.vely*3, 200 + dx*10 - player.velx*3, 120 + -dy*10 + player.vely*3, 3);
+	plotLine(ctx, 200 + hy* 5                , 120 +  hx* 5                , 200 + hx*10                , 120 + -hy*10                , 1, player.inWater);
+	plotLine(ctx, 200 - hy* 5                , 120 -  hx* 5                , 200 + hx*10                , 120 + -hy*10                , 1, player.inWater);
+
+	/* plotLine(ctx, 200 - dx*10 - player.velx  , 120 - -dy*10 + player.vely  , 200 + dx*10 - player.velx  , 120 + -dy*10 + player.vely  , 2, 1); */
+	/* plotLine(ctx, 200 - dx*10 - player.velx*3, 120 - -dy*10 + player.vely*3, 200 + dx*10 - player.velx*3, 120 + -dy*10 + player.vely*3, 3, 1); */
 
 	return true;
 }
