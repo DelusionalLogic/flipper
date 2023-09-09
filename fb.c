@@ -97,7 +97,9 @@ void init_render(struct RenderContext *ctx) {
 #endif
 
 	ioctl(fbfd, KDSETMODE, KD_GRAPHICS);
-	ctx->buffer = mmap(0, WIDTH * HEIGHT * 4, PROT_READ | PROT_WRITE, MAP_SHARED, fbfd, (off_t)0);
+	ctx->fbuffer = mmap(0, WIDTH * HEIGHT * 4, PROT_READ | PROT_WRITE, MAP_SHARED, fbfd, (off_t)0);
+	ctx->buffer = malloc(WIDTH * HEIGHT * 4);
+	assert(ctx->buffer != NULL);
 
 	memset(ctx->keys, 0, KC_LAST * sizeof(uint8_t));
 	return;
@@ -143,12 +145,14 @@ bool pump(struct RenderContext *ctx) {
 }
 
 void render(struct RenderContext *ctx) {
+	memcpy(ctx->fbuffer, ctx->buffer, WIDTH * HEIGHT * 4);
 }
 
 void stop(struct RenderContext *ctx) {
-	memset(ctx->buffer, 0, WIDTH*HEIGHT*4);
-	munmap(ctx->buffer, WIDTH*HEIGHT*4);
+	memset(ctx->fbuffer, 0, WIDTH*HEIGHT*4);
+	munmap(ctx->fbuffer, WIDTH*HEIGHT*4);
 	close(ctx->fbfd);
+	free(ctx->buffer);
 
 	// Shouldn't this be saved when opened too?
 	if (ioctl(ctx->ttyfd, KDSETMODE, KD_TEXT) < 0) {

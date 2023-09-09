@@ -186,7 +186,53 @@ static bool process(struct RenderContext *ctx) {
 	player.x += roundf(player.velx);
 	player.y += roundf(player.vely);
 
-	memset(ctx->buffer, 0, WIDTH * HEIGHT * 4);
+	static float t = 0.0;
+	t += 0.01667;
+
+	{ // Draw the background and wave
+		int w_offset = player.x;
+		float wave[WIDTH];
+		for(int x = 0; x < WIDTH; x++) {
+			wave[x] = sinf((w_offset + x + t*26) * M_PI*2 / 400  * 5.5) * 2;
+			wave[x] += sinf((w_offset + x - t*4) * M_PI*2 / 400  * 4) * 2;
+			wave[x] += sinf((w_offset + x + t*33) * M_PI*2 / 400 * 7.3) * 1.2;
+			wave[x] += sinf((w_offset + x + -t*50) * M_PI*2 / 400 * 1.2) * 4;
+		}
+
+		for(uint16_t y = 0; y < HEIGHT; y++) {
+			int16_t ly = (-player.y - HEIGHT/2.0) + y;
+			for(uint16_t x = 0; x < WIDTH; x++) {
+				int16_t lx = (player.x - WIDTH/2.0) + x;
+				uint8_t color = 0.0;
+				float h = wave[x] - ly;
+				if(fabs(h) < 2.0) {
+					/* plot(ctx, x, y, 255); */
+					color = 120;
+					color = lerpf(255, 0, clampf(0.0, 1.0, fabs(h)/2));
+				} else {
+
+					if(h < 0.0) {
+						// Underwater
+						if(ly < 50.0) {
+							color = lerpf(40, 0, clampf(0.0, 1.0, -h/20.0));
+						} else if(ly > 500) {
+							color = lerpf(0, 255.5, clampf(0.0, 1.0, (ly-500)/100.0));
+							/* color = 0.0; */
+						}
+					} else {
+						if(h < 10.0) {
+							/* color = lerpf(0, 255, clampf(0.0, 1.0, h/10.0)); */
+						} else {
+							color = lerpf(55, 0, clampf(0.0, 1.0, -ly/1000.0));
+						}
+					}
+				}
+
+				uint8_t qcolor  = dither[abs(lx) % 8 + (abs(ly) % 8) * 8] <= color ? 255 : 0;
+				plot(ctx, x, y, qcolor);
+			}
+		}
+	}
 
 	if(splash.alive > 0) {
 		int y_base = 120 + player.y;
@@ -229,53 +275,6 @@ static bool process(struct RenderContext *ctx) {
 		/* } */
 
 		splash.alive--;
-	}
-
-
-	static float t = 0.0;
-	t += 0.01667;
-
-	{ // Draw the background and wave
-		int w_offset = player.x;
-		float wave[WIDTH];
-		for(int x = 0; x < WIDTH; x++) {
-			wave[x] = sinf((w_offset + x + t*26) * M_PI*2 / 400  * 5.5) * 2;
-			wave[x] += sinf((w_offset + x - t*4) * M_PI*2 / 400  * 4) * 2;
-			wave[x] += sinf((w_offset + x + t*33) * M_PI*2 / 400 * 7.3) * 1.2;
-			wave[x] += sinf((w_offset + x + -t*50) * M_PI*2 / 400 * 1.2) * 4;
-		}
-
-		for(uint16_t y = 0; y < HEIGHT; y++) {
-			int16_t ly = (-player.y - HEIGHT/2.0) + y;
-			for(uint16_t x = 0; x < WIDTH; x++) {
-				int16_t lx = (player.x - WIDTH/2.0) + x;
-				if(fabs(wave[x] - ly) < .5) {
-					plot(ctx, x, y, 255);
-					continue;
-				}
-
-				float h = wave[x] - ly;
-				uint8_t color = 0.0;
-				if(h < 0.0) {
-					// Underwater
-					if(ly < 50.0) {
-						color = lerpf(40, 0, clampf(0.0, 1.0, -h/20.0));
-					} else if(ly > 500) {
-						color = lerpf(0, 255.5, clampf(0.0, 1.0, (ly-500)/100.0));
-						/* color = 0.0; */
-					}
-				} else {
-					if(h < 5.0) {
-					} else {
-						color = lerpf(55, 0, clampf(0.0, 1.0, -ly/1000.0));
-					}
-				}
-
-				if(dither[abs(lx) % 8 + (abs(ly) % 8) * 8] <= color) {
-					plot(ctx, x, y, 255);
-				}
-			}
-		}
 	}
 
 	if(player.wiggleT > 0.0) {

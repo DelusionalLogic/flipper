@@ -28,6 +28,7 @@ struct RenderContext {
 #if RENDER == SDL
 	SDL_Surface *surface;
 #elif RENDER == FB
+	uint8_t *fbuffer;
 	struct libevdev *dev;
 	unsigned short prev_tty;
 	int ttyfd;
