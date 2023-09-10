@@ -5,7 +5,7 @@ OBJDIR ?= obj
 LIBS = -lm
 INCS =
 
-CFLAGS ?= -O3 -D_FORTIFY_SOURCE=2 -Wall -g
+CFLAGS ?= -O3 -march=native -D_FORTIFY_SOURCE=2 -Wall -g
 CFLAGS += -std=gnu11
 
 print-%  : ; @echo $* = $($*)

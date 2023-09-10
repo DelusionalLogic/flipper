@@ -291,31 +291,30 @@ static bool process(struct RenderContext *ctx) {
 			wave[x] += sinf((w_offset + x + -t*50) * M_PI*2 / 400 * 1.2) * 4;
 		}
 
-		for(uint16_t y = 0; y < HEIGHT; y++) {
-			int16_t ly = (-player.y - HEIGHT/2.0) + y;
-			for(uint16_t x = 0; x < WIDTH; x++) {
-				int16_t lx = (player.x - WIDTH/2.0) + x;
+		for(uint16_t sy = 0; sy < HEIGHT; sy++) {
+			int16_t ly = (-player.y - HEIGHT/2.0) + sy;
+			for(uint16_t sx = 0; sx < WIDTH; sx++) {
+				int16_t lx = (player.x - WIDTH/2.0) + sx;
 				uint8_t color = 0.0;
-				float h = wave[x] - ly;
-				if(h < 0.0) {
-					// Underwater
-					float foamNoise = sample(noiseTexture, abs(lx), abs(ly)) * 255;
-					/* color += foamNoise; */
-					color += lerpf(foamNoise*0.7, 0, clampf(0.0, 1.0, -h/20.0));
-					color += lerpf(0, 255.5, clampf(0.0, 1.0, (ly-500)/100.0));
-						/* color = 0.0; */
-				} else {
-					// In Air
-					float cloud = sample(noiseTexture, fabsf(lx-t*4), abs(ly));
-					float cutoff = lerpf(1.0, 0.55, clampf(0, 1, (-ly-400)/100.0));
-					cloud = clampf(0, 1, (cloud-cutoff)/(1.0-cutoff)) * 255;
-					color += cloud;
 
-					color = 255 - color;
-				}
+				float waveDist = wave[sx] - ly;
+
+				// Underwater
+				float foamNoise = sample(noiseTexture, abs(lx), abs(ly)) * 255;
+				color += waveDist >= 0.0 ? 0 : lerpf(foamNoise*0.7, 0, clampf(0.0, 1.0, -waveDist/30.0));
+				color += lerpf(0, 255.5, clampf(0.0, 1.0, (ly-500)/100.0));
+
+				// In Air
+				float cloud = sample(noiseTexture, fabsf(lx-t*4), abs(ly));
+				float cutoff = lerpf(1.0, 0.55, clampf(0, 1, (-ly-400)/100.0));
+				cloud = clampf(0, 1, (cloud-cutoff)/(1.0-cutoff)) * 255;
+				color += cloud;
+
+				// Invert color in air
+				color = waveDist < 0.0 ? color : 255 - color;
 
 				uint8_t qcolor = dither[abs(lx) % 8 + (abs(ly) % 8) * 8] <= color;
-				plot(ctx, x, y, qcolor);
+				plot(ctx, sx, sy, qcolor);
 			}
 		}
 	}
