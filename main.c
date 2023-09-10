@@ -1,5 +1,6 @@
 #include "render.h"
 #include "font8x8_basic.h"
+#include "noise.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -93,6 +94,24 @@ float clampf(float min, float max, float t) {
 
 float lerpf(float a, float b, float t) {
 	return a * (1-t) + b * (t);
+}
+
+float sample(const uint8_t *tex, float x, float y) {
+	uint16_t ix = x, iy = y;
+	float fx = x - ix, fy = y - iy;
+	iy %= 512;
+	size_t r1 = iy*512;
+	iy = (iy + 1) % 512;
+	size_t r2 = iy*512;
+
+	ix %= 512;
+	size_t c1 = ix;
+	ix = (ix + 1) % 512;
+	size_t c2 = ix;
+
+	float a = lerpf(tex[r1 + c1], tex[r1 + c2], fx);
+	float b = lerpf(tex[r2 + c1], tex[r2 + c2], fx);
+	return lerpf(a, b, fy)/255;
 }
 
 static int SEED = 0;
@@ -280,25 +299,19 @@ static bool process(struct RenderContext *ctx) {
 				float h = wave[x] - ly;
 				if(h < 0.0) {
 					// Underwater
-					float foamNoise = perlin2d(abs(lx), abs(ly), 0.01, 4) * 255;
+					float foamNoise = sample(noiseTexture, abs(lx), abs(ly)) * 255;
 					/* color += foamNoise; */
 					color += lerpf(foamNoise*0.7, 0, clampf(0.0, 1.0, -h/20.0));
 					color += lerpf(0, 255.5, clampf(0.0, 1.0, (ly-500)/100.0));
 						/* color = 0.0; */
 				} else {
 					// In Air
-					/* color = lerpf(55, 0, clampf(0.0, 1.0, -ly/1000.0)); */
-					if(powf(perlin2d(abs(lx), 1, 0.005, 4), 2) * 200 -100 > -ly)  {
-						color = 0;
-					} else{
-						color = 255;
-						if(ly < -400) {
-							float cloud = perlin2d(fabsf(lx-t*4), abs(ly), 0.01, 4);
-							float cutoff = lerpf(1.0, 0.7, clampf(0, 1, (-ly-400)/100.0));
-							cloud = clampf(0, 1, (cloud-cutoff)/(1.0-cutoff)) * 255;
-							color -= cloud;
-						}
-					}
+					float cloud = sample(noiseTexture, fabsf(lx-t*4), abs(ly));
+					float cutoff = lerpf(1.0, 0.55, clampf(0, 1, (-ly-400)/100.0));
+					cloud = clampf(0, 1, (cloud-cutoff)/(1.0-cutoff)) * 255;
+					color += cloud;
+
+					color = 255 - color;
 				}
 
 				uint8_t qcolor = dither[abs(lx) % 8 + (abs(ly) % 8) * 8] <= color;
