@@ -1,6 +1,5 @@
 #include "render.h"
 #include "font8x8_basic.h"
-#include "noise.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -12,18 +11,37 @@
 #include <unistd.h>
 #include <math.h>
 
-static const uint8_t dither[] = {
-	0x03, 0x83, 0x23, 0xa3, 0x0b, 0x8b, 0x2b, 0xab,
-	0xc3, 0x43, 0xe3, 0x63, 0xcb, 0x4b, 0xeb, 0x6b,
-	0x33, 0xb3, 0x13, 0x93, 0x3b, 0xbb, 0x1b, 0x9b,
-	0xf3, 0x73, 0xd3, 0x53, 0xfb, 0x7b, 0xdb, 0x5b,
-	0x0f, 0x8f, 0x2f, 0xaf, 0x07, 0x87, 0x27, 0xa7,
-	0xcf, 0x4f, 0xef, 0x6f, 0xc7, 0x47, 0xe7, 0x67,
-	0x3f, 0xbf, 0x1f, 0x9f, 0x37, 0xb7, 0x17, 0x97,
-	0xff, 0x7f, 0xdf, 0x5f, 0xf7, 0x77, 0xd7, 0x57
+
+struct Tex {
+	size_t height;
+	size_t width;
+	uint8_t data[];
 };
 
-static void plot(struct RenderContext *ctx, uint16_t x, uint16_t y, uint8_t v) {
+static const struct Tex noiseTexture = {
+	.width = 512,
+	.height = 512,
+	.data = {
+#include "noise.h"
+	},
+};
+
+static const struct Tex ditherTexture = {
+	.width = 8,
+	.height = 8,
+	.data = {
+		0x03, 0x83, 0x23, 0xa3, 0x0b, 0x8b, 0x2b, 0xab,
+		0xc3, 0x43, 0xe3, 0x63, 0xcb, 0x4b, 0xeb, 0x6b,
+		0x33, 0xb3, 0x13, 0x93, 0x3b, 0xbb, 0x1b, 0x9b,
+		0xf3, 0x73, 0xd3, 0x53, 0xfb, 0x7b, 0xdb, 0x5b,
+		0x0f, 0x8f, 0x2f, 0xaf, 0x07, 0x87, 0x27, 0xa7,
+		0xcf, 0x4f, 0xef, 0x6f, 0xc7, 0x47, 0xe7, 0x67,
+		0x3f, 0xbf, 0x1f, 0x9f, 0x37, 0xb7, 0x17, 0x97,
+		0xff, 0x7f, 0xdf, 0x5f, 0xf7, 0x77, 0xd7, 0x57
+	}
+};
+
+static inline void plot(struct RenderContext *ctx, uint16_t x, uint16_t y, uint8_t v) {
 	assert(x >= 0 && x < WIDTH);
 	assert(y >= 0 && y < HEIGHT);
 	uint32_t base = (x + (y * WIDTH)) * 4;
@@ -100,22 +118,17 @@ float slerpf(float min, float max, float v) {
 	return lerpf(min, max, v * v * (3-2*v));
 }
 
-float sample(const uint8_t *tex, float x, float y) {
-	uint16_t ix = x, iy = y;
+float samplei(const struct Tex *tex, int16_t x, int16_t y) {
+	uint16_t tx = abs(x)%tex->width, ty = abs(y)%tex->height;
+	return tex->data[(ty*tex->width) + tx]/255.0;
+}
+
+float sample(const struct Tex *tex, float x, float y) {
+	int16_t ix = x, iy = y;
 	float fx = x - ix, fy = y - iy;
-	iy %= 512;
-	size_t r1 = iy*512;
-	iy = (iy + 1) % 512;
-	size_t r2 = iy*512;
-
-	ix %= 512;
-	size_t c1 = ix;
-	ix = (ix + 1) % 512;
-	size_t c2 = ix;
-
-	float a = lerpf(tex[r1 + c1], tex[r1 + c2], fx);
-	float b = lerpf(tex[r2 + c1], tex[r2 + c2], fx);
-	return lerpf(a, b, fy)/255;
+	float a = lerpf(samplei(tex, ix, iy    ), samplei(tex, ix + 1, iy    ), fx);
+	float b = lerpf(samplei(tex, ix, iy + 1), samplei(tex, ix + 1, iy + 1), fx);
+	return lerpf(a, b, fy);
 }
 
 float hash(float p) {
@@ -226,25 +239,26 @@ static bool process(struct RenderContext *ctx) {
 			int16_t ly = (-player.y - HEIGHT/2.0) + sy;
 			for(uint16_t sx = 0; sx < WIDTH; sx++) {
 				int16_t lx = (player.x - WIDTH/2.0) + sx;
-				uint8_t color = 0.0;
+				float color = 0.0;
 
-				float waveDist = wave[sx] - ly;
+				int16_t waveDist = wave[sx] - ly;
 
 				// Underwater
-				float foamNoise = sample(noiseTexture, abs(lx), abs(ly)) * 255;
-				color += waveDist >= 0.0 ? 0 : lerpf(foamNoise*0.7, 0, clampf(0.0, 1.0, -waveDist/30.0));
-				color += lerpf(0, 255.5, clampf(0.0, 1.0, (ly-500)/100.0));
+				float foamNoise = samplei(&noiseTexture, abs(lx), abs(ly));
+				foamNoise = lerpf(foamNoise*0.7, 0, clampf(0.0, 1.0, -waveDist/30.0));
+				color += waveDist >= 0.0 ? 0.0 : foamNoise;
+				color += lerpf(0, 1, clampf(0.0, 1.0, (ly-500)/100.0));
 
 				// In Air
-				float cloud = sample(noiseTexture, fabsf(lx-t*4), abs(ly));
+				float cloud = sample(&noiseTexture, (lx/4.0f)-t*10, ly/2.0);
 				float cutoff = lerpf(1.0, 0.55, clampf(0, 1, (-ly-400)/100.0));
-				cloud = clampf(0, 1, (cloud-cutoff)/(1.0-cutoff)) * 255;
+				cloud = clampf(0, 1, (cloud-cutoff)/(1.0-cutoff));
 				color += cloud;
 
 				// Invert color in air
-				color = waveDist < 0.0 ? color : 255 - color;
+				color = waveDist < 0.0 ? color : 1.0 - color;
 
-				uint8_t qcolor = dither[abs(lx) % 8 + (abs(ly) % 8) * 8] <= color;
+				uint8_t qcolor = samplei(&ditherTexture, lx, ly) <= color;
 				plot(ctx, sx, sy, qcolor);
 			}
 		}
