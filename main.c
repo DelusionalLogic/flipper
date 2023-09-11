@@ -106,35 +106,39 @@ struct splash {
 	uint8_t escale;
 } splash;
 
-float clampf(float min, float max, float t) {
+inline float clampf(float min, float max, float t) {
 	return fmaxf(fminf(t, max), min);
 }
 
-float lerpf(float a, float b, float t) {
-	return a * (1-t) + b * (t);
+inline float ilerpf(float a, float b, float t) {
+	return (t - a) / (b - a);
 }
 
-float slerpf(float min, float max, float v) {
-	return lerpf(min, max, v * v * (3-2*v));
+inline float lerpf(float a, float b, float t) {
+	return a * (1.0f-t) + b * t;
 }
 
-float samplei(const struct Tex *tex, int16_t x, int16_t y) {
+inline float slerpf(float min, float max, float v) {
+	return lerpf(min, max, v * v * (3.0f-2.0f*v));
+}
+
+inline float samplei(const struct Tex *tex, int16_t x, int16_t y) {
 	uint16_t tx = abs(x)%tex->width, ty = abs(y)%tex->height;
-	return tex->data[(ty*tex->width) + tx]/255.0;
+	return tex->data[(ty*tex->width) + tx]/255.0f;
 }
 
 float sample(const struct Tex *tex, float x, float y) {
 	int16_t ix = x, iy = y;
 	float fx = x - ix, fy = y - iy;
-	float a = lerpf(samplei(tex, ix, iy    ), samplei(tex, ix + 1, iy    ), fx);
-	float b = lerpf(samplei(tex, ix, iy + 1), samplei(tex, ix + 1, iy + 1), fx);
+	float a = lerpf(samplei(tex, ix, iy       ), samplei(tex, ix + 1.0f, iy       ), fx);
+	float b = lerpf(samplei(tex, ix, iy + 1.0f), samplei(tex, ix + 1.0f, iy + 1.0f), fx);
 	return lerpf(a, b, fy);
 }
 
 float hash(float p) {
 	float f;
-	p = modff(p * 0.011, &f);
-	p *= p + 7.5;
+	p = modff(p * 0.011f, &f);
+	p *= p + 7.5f;
 	p *= p + p;
 	p = modff(p, &f);
 	return p;
@@ -143,8 +147,7 @@ float hash(float p) {
 float noise(float x) {
 	float i;
 	float f = modff(x, &i);
-	float u = f * f * (3.0 - 2.0 * f);
-	return lerpf(hash(i), hash(i + 1.0), u);
+	return slerpf(hash(i), hash(i + 1.0f), f);
 }
 
 static bool process(struct RenderContext *ctx) {
@@ -159,7 +162,7 @@ static bool process(struct RenderContext *ctx) {
 	{
 		float dir;
 		{
-			float dx = cos(player.angle), dy = sin(player.angle);
+			float dx = cosf(player.angle), dy = sinf(player.angle);
 			float dot = dx * (player.velx) + dy * (player.vely);
 			dir = dot > 0.0 ? 1 : -1;
 		}
@@ -178,7 +181,7 @@ static bool process(struct RenderContext *ctx) {
 		player.bend = clampf(-1.0, 1.0, player.bend);
 	}
 
-	float dx = cos(player.angle), dy = sin(player.angle);
+	float dx = cosf(player.angle), dy = sinf(player.angle);
 
 	if(player.inWater ^ (player.y <= 0)) {
 		splash.seed = rand();
@@ -188,7 +191,7 @@ static bool process(struct RenderContext *ctx) {
 		splash.life = lerpf(30, 60, splash.scale/255.0);
 		splash.alive = splash.life;
 		float pdot = dx * (player.velx) + dy * (player.vely);
-		splash.escale = player.inWater ? 0 : fmin(fabsf(pdot) * 64, 255.0);
+		splash.escale = player.inWater ? 0 : fminf(fabsf(pdot) * 64, 255.0);
 	}
 	player.inWater = player.y <= 0;
 
@@ -202,61 +205,61 @@ static bool process(struct RenderContext *ctx) {
 		player.velx *= .99999f;
 		player.vely *= .99999f;
 
-		if(fabs(player.velx) > 0.00001 || fabs(player.vely) > 0.00001) {
+		if(fabsf(player.velx) > 0.00001f || fabsf(player.vely) > 0.00001f) {
 			float dot = -dy * (player.velx) + dx * (player.vely);
 			// There's some layer of less heavy water near the surface
-			float depth_factor = powf(clampf(0.0, 1.0, -player.y / 50.0), 2);
-			player.velx += -dy * -dot * .3 * depth_factor;
-			player.vely +=  dx * -dot * .3 * depth_factor;
+			float depth_factor = powf(clampf(0.0f, 1.0f, -player.y / 50.0f), 2);
+			player.velx += -dy * -dot * .3f * depth_factor;
+			player.vely +=  dx * -dot * .3f * depth_factor;
 		}
 	}
 
-	static int last_up = 0;
+	static bool last_up = 0;
 	if(ctx->keys[KC_UP] && !last_up && player.inWater) {
-		player.velx += dx * 1;
-		player.vely += dy * 1;
-		player.wiggleT = 60;
+		player.velx += dx * 1.0f;
+		player.vely += dy * 1.0f;
+		player.wiggleT = 60.0f;
 	}
 	last_up = ctx->keys[KC_UP];
 
 	player.x += roundf(player.velx);
 	player.y += roundf(player.vely);
 
-	static float t = 0.0;
-	t += 0.01667;
+	static float t = 0.0f;
+	t += 0.01667f;
 
 	{ // Draw the background and wave
-		int w_offset = player.x;
+		int32_t w_offset = player.x;
 		float wave[WIDTH];
-		for(int x = 0; x < WIDTH; x++) {
-			wave[x] = sinf((w_offset + x + t*26) * M_PI*2 / 400  * 5.5) * 2;
-			wave[x] += sinf((w_offset + x - t*4) * M_PI*2 / 400  * 4) * 2;
-			wave[x] += sinf((w_offset + x + t*33) * M_PI*2 / 400 * 7.3) * 1.2;
-			wave[x] += sinf((w_offset + x + -t*50) * M_PI*2 / 400 * 1.2) * 4;
+		for(uint16_t x = 0; x < WIDTH; x++) {
+			wave[x] = sinf((w_offset + x + t*26) * M_PI*2 / 400  * 5.5f) * 2.0f;
+			wave[x] += sinf((w_offset + x - t*4) * M_PI*2 / 400  * 4.0f) * 2.0f;
+			wave[x] += sinf((w_offset + x + t*33) * M_PI*2 / 400 * 7.3f) * 1.2f;
+			wave[x] += sinf((w_offset + x + -t*50) * M_PI*2 / 400 * 1.2f) * 4.0f;
 		}
 
 		for(uint16_t sy = 0; sy < HEIGHT; sy++) {
-			int16_t ly = (-player.y - HEIGHT/2.0) + sy;
+			int16_t ly = (-player.y - HEIGHT/2) + sy;
 			for(uint16_t sx = 0; sx < WIDTH; sx++) {
-				int16_t lx = (player.x - WIDTH/2.0) + sx;
-				float color = 0.0;
+				int16_t lx = (player.x - WIDTH/2) + sx;
+				float color = 0.0f;
 
 				int16_t waveDist = wave[sx] - ly;
 
 				// Underwater
 				float foamNoise = samplei(&noiseTexture, abs(lx), abs(ly));
-				foamNoise = lerpf(foamNoise*0.7, 0, clampf(0.0, 1.0, -waveDist/30.0));
-				color += waveDist >= 0.0 ? 0.0 : foamNoise;
-				color += lerpf(0, 1, clampf(0.0, 1.0, (ly-500)/100.0));
+				foamNoise = lerpf(foamNoise*0.7f, 0.0f, clampf(0.0f, 1.0f, -waveDist/30.0f));
+				color += waveDist >= 0.0f ? 0.0f : foamNoise;
+				color += lerpf(0.0f, 1.0f, clampf(0.0f, 1.0f, (ly-500)/100.0f));
 
 				// In Air
-				float cloud = sample(&noiseTexture, (lx/4.0f)-t*10, ly/2.0);
-				float cutoff = lerpf(1.0, 0.55, clampf(0, 1, (-ly-400)/100.0));
-				cloud = clampf(0, 1, (cloud-cutoff)/(1.0-cutoff));
+				float cloud = samplei(&noiseTexture, (lx/4.0f)-t*10.0f, ly/2.0f);
+				float cutoff = lerpf(1.0f, 0.55f, clampf(0.0f, 1.0f, (-ly-400)/100.0f));
+				cloud = clampf(0.0f, 1.0f, ilerpf(0.0f, 1.0f-cutoff, cloud-cutoff));
 				color += cloud;
 
 				// Invert color in air
-				color = waveDist < 0.0 ? color : 1.0 - color;
+				color = waveDist < 0.0f ? color : 1.0f - color;
 
 				uint8_t qcolor = samplei(&ditherTexture, lx, ly) <= color;
 				plot(ctx, sx, sy, qcolor);
@@ -268,18 +271,18 @@ static bool process(struct RenderContext *ctx) {
 		int y_base = 120 + player.y;
 		int x_base = splash.x - player.x + 200;
 
-		float prev_t = clampf(0, 1, 1.0 - (splash.alive+1.5)/(float)splash.life);
+		float prev_t = clampf(0.0f, 1.0f, 1.0f - (splash.alive+1.5f)/(float)splash.life);
 		float t = 1.0 - splash.alive/(float)splash.life;
 
 		for(uint8_t i = 0; i < splash.scale/4; i++) {
 			if(noise(0x40 ^ i ^ splash.seed) <= t) {
 				continue;
 			}
-			uint16_t x      = x_base +      t * (noise(i ^ splash.seed)-0.5) * splash.scale * 1;
-			uint16_t prev_x = x_base + prev_t * (noise(i ^ splash.seed)-0.5) * splash.scale * 1;
+			uint16_t x      = x_base +      t * (noise(i ^ splash.seed)-0.5f) * splash.scale * 1.0f;
+			uint16_t prev_x = x_base + prev_t * (noise(i ^ splash.seed)-0.5f) * splash.scale * 1.0f;
 
-			uint16_t y      = y_base - sin(     t * M_PI * lerpf(0.8, 1.0, noise(i ^ 0x80 ^ splash.seed))) * noise(i ^ 0x80 ^ splash.seed) * splash.scale * 0.25;
-			uint16_t prev_y = y_base - sin(prev_t * M_PI * lerpf(0.8, 1.0, noise(i ^ 0x80 ^ splash.seed))) * noise(i ^ 0x80 ^ splash.seed) * splash.scale * 0.25;
+			uint16_t y      = y_base - sinf(     t * M_PI * lerpf(0.8f, 1.0f, noise(i ^ 0x80 ^ splash.seed))) * noise(i ^ 0x80 ^ splash.seed) * splash.scale * 0.25f;
+			uint16_t prev_y = y_base - sinf(prev_t * M_PI * lerpf(0.8f, 1.0f, noise(i ^ 0x80 ^ splash.seed))) * noise(i ^ 0x80 ^ splash.seed) * splash.scale * 0.25f;
 			// We don't do clipping. Just discard any particle partly outside
 			// the viewport
 			if(x >= 0 && x < 400 && y >= 0 && y < 240) {
