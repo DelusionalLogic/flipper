@@ -18,7 +18,7 @@ ifeq "$(RENDER)" "SDL"
 	PACKAGES += sdl
 	SOURCES += sdl.c
 else ifeq "$(RENDER)" "FB"
-	CFLAGS += -DRENDER=FB
+	CFLAGS += -DRENDER=FB -march=armv8-a+simd -flto -ffast-math -mfpu=neon
 	SOURCES += fb.c
 endif
 
