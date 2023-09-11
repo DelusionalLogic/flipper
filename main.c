@@ -225,6 +225,11 @@ static bool process(struct RenderContext *ctx) {
 	player.x += roundf(player.velx);
 	player.y += roundf(player.vely);
 
+	if(player.y < -500) {
+		player.vely = 0;
+		player.y = -500;
+	}
+
 	static float t = 0.0f;
 	t += 0.01667f;
 
@@ -247,15 +252,17 @@ static bool process(struct RenderContext *ctx) {
 				int16_t waveDist = wave[sx] - ly;
 
 				// Underwater
-				float foamNoise = samplei(&noiseTexture, abs(lx), abs(ly));
-				foamNoise = lerpf(foamNoise*0.7f, 0.0f, clampf(0.0f, 1.0f, -waveDist/30.0f));
-				color += waveDist >= 0.0f ? 0.0f : foamNoise;
-				color += lerpf(0.0f, 1.0f, clampf(0.0f, 1.0f, (ly-500)/100.0f));
+				float foamNoise = samplei(&noiseTexture, abs(lx/2), abs(ly/2));
+				float foam = lerpf(foamNoise*0.7f, 0.0f, clampf(0.0f, 1.0f, -waveDist/30.0f));
+				color += waveDist >= 0.0f ? 0.0f : foam;
+
+				// Seabed
+				color += lerpf(0.0f, 1.0f, clampf(0.0f, 1.0f, (ly-500)/10.0f));
 
 				// In Air
 				float cloud = samplei(&noiseTexture, (lx/4.0f)-t*10.0f, ly/2.0f);
 				float cutoff = lerpf(1.0f, 0.55f, clampf(0.0f, 1.0f, (-ly-400)/100.0f));
-				cloud = clampf(0.0f, 1.0f, ilerpf(0.0f, 1.0f-cutoff, cloud-cutoff));
+				cloud = clampf(0.0f, 1.0f, ilerpf(0.0f, 1.0f-cutoff, cloud-cutoff)*2.1f);
 				color += cloud;
 
 				// Invert color in air
